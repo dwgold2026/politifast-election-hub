@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import * as XLSX from "xlsx";
 
 const S = [
 {s:"AL",n:"Alabama",filing:"Jan 23, 2026",primary:"May 19, 2026",runoff:"Jun 16, 2026",general:"Nov 3, 2026",status:"closed",
@@ -885,6 +886,58 @@ function App(){
     return ()=>window.removeEventListener("resize",onResize);
   },[]);
 
+  const [candidates,setCandidates]=useState([]);
+  const [candLoading,setCandLoading]=useState(false);
+  const [candFilter,setCandFilter]=useState("");
+  const [candLevelFilter,setCandLevelFilter]=useState("all");
+
+  // Load candidate data when state changes
+  useEffect(()=>{
+    if(!sel) return;
+    setCandidates([]);
+    setCandLoading(true);
+    const st=sel.toLowerCase();
+    // Try state-specific all-levels file first, then federal-only
+    const files=[`/data/${st}-all.json`,`/data/${st}-federal.json`];
+    Promise.all(files.map(f=>fetch(f).then(r=>r.ok?r.json():[]).catch(()=>[])))
+      .then(([all,fed])=>{
+        // Merge: all-levels file is primary, add federal candidates not already present
+        const byKey=new Map();
+        for(const c of all) byKey.set(`${c.name}|${c.office}`,c);
+        for(const c of fed){
+          const k=`${c.name}|${c.office}`;
+          if(!byKey.has(k)) byKey.set(k,c);
+        }
+        setCandidates([...byKey.values()]);
+        setCandLoading(false);
+      });
+  },[sel]);
+
+  const filteredCandidates=useMemo(()=>{
+    return candidates.filter(c=>{
+      if(candLevelFilter!=="all"&&c.officeLevel!==candLevelFilter) return false;
+      if(candFilter){
+        const q=candFilter.toLowerCase();
+        return c.name.toLowerCase().includes(q)||c.office.toLowerCase().includes(q)||(c.party||"").toLowerCase().includes(q);
+      }
+      return true;
+    });
+  },[candidates,candFilter,candLevelFilter]);
+
+  const exportExcel=useCallback(()=>{
+    const rows=filteredCandidates.map(c=>({
+      Name:c.name,"First Name":c.firstName||"","Last Name":c.lastName||"",
+      Office:c.office,Level:c.officeLevel||"",Party:c.party||"",County:c.county||"",
+      Email:c.email||"",Phone:c.phone||"",Website:c.website||"",
+      Address:c.address||"",City:c.city||"",State:c.state||sel,Zip:c.zip||"",
+      Source:c.source||"",
+    }));
+    const ws=XLSX.utils.json_to_sheet(rows);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,`${sel} Candidates`);
+    XLSX.writeFile(wb,`${sel}_candidates_2026.xlsx`);
+  },[filteredCandidates,sel]);
+
   const toggleFilter=(k)=>setFilters(prev=>{
     const next=new Set(prev);
     if(next.has(k)) next.delete(k); else next.add(k);
@@ -1173,6 +1226,85 @@ function App(){
             </div>
           </div>
         </>
+      )}
+      {/* Candidate Data */}
+      {candidates.length>0&&(
+      <div style={{background:"#fff",border:"1px solid #e5e7eb",borderLeft:"4px solid #1d4ed8",borderRadius:"0 10px 10px 0",padding:"14px 18px",marginTop:10}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:10}}>
+          <div style={{fontSize:10,fontWeight:700,color:"#1d4ed8",letterSpacing:1,textTransform:"uppercase"}}>
+            Candidate Data — {filteredCandidates.length} candidates
+          </div>
+          <button onClick={exportExcel} style={{
+            padding:"6px 16px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",
+            background:"#1d4ed8",color:"#fff",border:"none",
+          }}>Download Excel</button>
+        </div>
+
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+          <input type="text" placeholder="Search candidates..." value={candFilter} onChange={e=>setCandFilter(e.target.value)}
+            style={{padding:"5px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:12,flex:1,minWidth:140}}/>
+          <select value={candLevelFilter} onChange={e=>setCandLevelFilter(e.target.value)} style={{
+            padding:"5px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:12,background:"#fff",
+          }}>
+            <option value="all">All Levels</option>
+            <option value="federal">Federal</option>
+            <option value="state">State</option>
+            <option value="county">County</option>
+            <option value="municipal">Municipal</option>
+            <option value="school">School Board</option>
+            <option value="special">Special District</option>
+          </select>
+        </div>
+
+        <div style={{maxHeight:400,overflowY:"auto",border:"1px solid #e5e7eb",borderRadius:8}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <thead>
+              <tr style={{background:"#f8fafc",position:"sticky",top:0}}>
+                <th style={{padding:"6px 8px",textAlign:"left",fontWeight:700,borderBottom:"2px solid #e5e7eb",color:"#374151"}}>Name</th>
+                <th style={{padding:"6px 8px",textAlign:"left",fontWeight:700,borderBottom:"2px solid #e5e7eb",color:"#374151"}}>Office</th>
+                <th style={{padding:"6px 8px",textAlign:"left",fontWeight:700,borderBottom:"2px solid #e5e7eb",color:"#374151"}}>Party</th>
+                {!mobile&&<th style={{padding:"6px 8px",textAlign:"left",fontWeight:700,borderBottom:"2px solid #e5e7eb",color:"#374151"}}>Email</th>}
+                {!mobile&&<th style={{padding:"6px 8px",textAlign:"left",fontWeight:700,borderBottom:"2px solid #e5e7eb",color:"#374151"}}>Phone</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredCandidates.slice(0,200).map((c,i)=>(
+                <tr key={i} style={{borderBottom:"1px solid #f1f5f9"}}>
+                  <td style={{padding:"5px 8px",fontWeight:600,color:"#0f172a"}}>{c.name}</td>
+                  <td style={{padding:"5px 8px",color:"#4b5563",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.office}</td>
+                  <td style={{padding:"5px 8px"}}>
+                    <span style={{padding:"1px 8px",borderRadius:10,fontSize:10,fontWeight:700,
+                      background:c.party==="DEM"?"#dbeafe":c.party==="REP"?"#fee2e2":"#f3f4f6",
+                      color:c.party==="DEM"?"#1e40af":c.party==="REP"?"#991b1b":"#374151",
+                    }}>{c.party||"—"}</span>
+                  </td>
+                  {!mobile&&<td style={{padding:"5px 8px",fontSize:11,color:c.email?"#059669":"#d1d5db"}}>{c.email||"—"}</td>}
+                  {!mobile&&<td style={{padding:"5px 8px",fontSize:11,color:c.phone?"#059669":"#d1d5db"}}>{c.phone||"—"}</td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filteredCandidates.length>200&&(
+            <div style={{padding:8,textAlign:"center",fontSize:11,color:"#6b7280",background:"#f8fafc"}}>
+              Showing 200 of {filteredCandidates.length} — download Excel for full list
+            </div>
+          )}
+        </div>
+        {filteredCandidates.length>0&&(
+          <div style={{display:"flex",gap:12,marginTop:8,fontSize:11,color:"#6b7280"}}>
+            <span>With email: {filteredCandidates.filter(c=>c.email).length}</span>
+            <span>With phone: {filteredCandidates.filter(c=>c.phone).length}</span>
+          </div>
+        )}
+      </div>
+      )}
+      {candLoading&&(
+        <div style={{padding:20,textAlign:"center",color:"#6b7280",fontSize:12,marginTop:10}}>Loading candidate data...</div>
+      )}
+      {!candLoading&&candidates.length===0&&(
+        <div style={{background:"#f8fafc",border:"1px solid #e5e7eb",borderRadius:10,padding:"14px 18px",marginTop:10,textAlign:"center"}}>
+          <div style={{fontSize:12,color:"#6b7280"}}>No candidate data available yet for {cur.n}. Federal data is available for most states — run the collection scripts to populate.</div>
+        </div>
       )}
     </div>
     )}

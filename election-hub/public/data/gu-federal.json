@@ -1,0 +1,53 @@
+[
+  {
+    "name": "Alicia Limtiaco",
+    "firstName": "Alicia",
+    "lastName": "Limtiaco",
+    "office": "U.S. House GU-00",
+    "officeLevel": "federal",
+    "party": "DEM",
+    "status": "CHALLENGER",
+    "fecId": "H6GU01032",
+    "address": "PMB2041 285 FARENHOLT AVE UNIT 303",
+    "city": "TAMUNING",
+    "state": "GU",
+    "zip": "96913",
+    "totalReceipts": 0,
+    "cashOnHand": 0,
+    "source": "fec"
+  },
+  {
+    "name": "James Moylan",
+    "firstName": "James",
+    "lastName": "Moylan",
+    "office": "U.S. House GU-00",
+    "officeLevel": "federal",
+    "party": "REP",
+    "status": "INCUMBENT",
+    "fecId": "H2GU01031",
+    "address": "187 TUN RAMON STREET ST. 301",
+    "city": "TUMON",
+    "state": "GU",
+    "zip": "96913",
+    "totalReceipts": 47998.55,
+    "cashOnHand": 31523.12,
+    "source": "fec"
+  },
+  {
+    "name": "Mary Torres",
+    "firstName": "Mary",
+    "lastName": "Torres",
+    "office": "U.S. House GU-AL",
+    "officeLevel": "federal",
+    "party": "REP",
+    "status": "",
+    "fecId": "H6GU00059",
+    "address": "957 C SOUTH MARINE CORP DRIVE",
+    "city": "TAMUNING",
+    "state": "GU",
+    "zip": "96913",
+    "totalReceipts": 0,
+    "cashOnHand": 0,
+    "source": "fec"
+  }
+]
