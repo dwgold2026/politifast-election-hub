@@ -899,6 +899,7 @@ function App(){
     if(filters.has("closed")&&d.status==="closed") m2=true;
     if(filters.has("open")&&(d.status==="open"||d.status==="partial")) m2=true;
     if(filters.has("star")&&["NC","IL","MN","LA","WA"].includes(d.s)) m2=true;
+    if(filters.has("in30")&&hasElectionWithin(d,30)) m2=true;
     if(filters.has("in45")&&hasElectionWithin(d,45)) m2=true;
     if(filters.has("in60")&&hasElectionWithin(d,60)) m2=true;
     if(filters.has("in90")&&hasElectionWithin(d,90)) m2=true;
@@ -955,6 +956,7 @@ function App(){
               color:filters.size===0?"#92400e":"#6b7280",
             }}>All</button>
             {[
+              {k:"in30",l:"<30 Days",t:"Primary, general, or runoff within 30 days"},
               {k:"in45",l:"<45 Days",t:"Primary, general, or runoff within 45 days"},
               {k:"in60",l:"<60 Days",t:"Primary, general, or runoff within 60 days"},
               {k:"in90",l:"<90 Days",t:"Primary, general, or runoff within 90 days"},
@@ -984,6 +986,7 @@ function App(){
               color:filters.size===0?"#92400e":"#6b7280",
             }}>All</button>
             {[
+              {k:"in30",l:"<30 Days",t:"Primary, general, or runoff within 30 days"},
               {k:"in45",l:"<45 Days",t:"Primary, general, or runoff within 45 days"},
               {k:"in60",l:"<60 Days",t:"Primary, general, or runoff within 60 days"},
               {k:"in90",l:"<90 Days",t:"Primary, general, or runoff within 90 days"},
