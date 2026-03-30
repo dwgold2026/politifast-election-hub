@@ -891,27 +891,32 @@ function App(){
   const [candFilter,setCandFilter]=useState("");
   const [candLevelFilter,setCandLevelFilter]=useState("all");
 
-  // Load candidate data when state changes
-  useEffect(()=>{
-    if(!sel) return;
+  // Load candidate data from API when state changes
+  const loadCandidates=useCallback((state)=>{
+    if(!state) return;
     setCandidates([]);
     setCandLoading(true);
-    const st=sel.toLowerCase();
-    // Try state-specific all-levels file first, then federal-only
-    const files=[`/data/${st}-all.json`,`/data/${st}-federal.json`];
-    Promise.all(files.map(f=>fetch(f).then(r=>r.ok?r.json():[]).catch(()=>[])))
-      .then(([all,fed])=>{
-        // Merge: all-levels file is primary, add federal candidates not already present
-        const byKey=new Map();
-        for(const c of all) byKey.set(`${c.name}|${c.office}`,c);
-        for(const c of fed){
-          const k=`${c.name}|${c.office}`;
-          if(!byKey.has(k)) byKey.set(k,c);
-        }
-        setCandidates([...byKey.values()]);
-        setCandLoading(false);
-      });
-  },[sel]);
+    // Gold standard states have dedicated collectors; all states have FEC federal data
+    const stateCollectors={NC:"/api/collect/nc"};
+    const fetches=[
+      fetch(`/api/collect/fec?state=${state}`).then(r=>r.ok?r.json():null).catch(()=>null),
+    ];
+    if(stateCollectors[state]){
+      fetches.push(fetch(stateCollectors[state]).then(r=>r.ok?r.json():null).catch(()=>null));
+    }
+    Promise.all(fetches).then(results=>{
+      const byKey=new Map();
+      for(const result of results){
+        if(!result) continue;
+        const list=Array.isArray(result.data)?result.data:[];
+        for(const c of list) byKey.set(`${c.name}|${c.office}`,c);
+      }
+      setCandidates([...byKey.values()]);
+      setCandLoading(false);
+    });
+  },[]);
+
+  useEffect(()=>{ loadCandidates(sel); },[sel,loadCandidates]);
 
   const filteredCandidates=useMemo(()=>{
     return candidates.filter(c=>{
@@ -1238,6 +1243,10 @@ function App(){
             padding:"6px 16px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",
             background:"#1d4ed8",color:"#fff",border:"none",
           }}>Download Excel</button>
+          <button onClick={()=>loadCandidates(sel)} style={{
+            padding:"6px 16px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",
+            background:"#fff",color:"#1d4ed8",border:"1px solid #1d4ed8",
+          }}>Refresh Data</button>
         </div>
 
         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
