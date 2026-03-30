@@ -4,6 +4,7 @@
  * GET /api/collect/md
  */
 export const config = { maxDuration: 30 };
+import { getCached, setCache } from '../lib/cache.js';
 
 function parseCSVLine(line) {
   const result = [];
@@ -87,14 +88,12 @@ export default async function handler(req, res) {
       }
     }
 
-    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
-    res.json({
-      source: 'md_sbe',
-      updated: new Date().toISOString(),
-      totalCandidates: candidates.length,
-      data: candidates,
-    });
+    const payload = { source: 'md_sbe', updated: new Date().toISOString(), totalCandidates: candidates.length, data: candidates };
+    if (candidates.length > 0) await setCache('md_sbe', 'MD', payload).catch(() => {});
+    res.json(payload);
   } catch (err) {
+    const cached = await getCached('md_sbe', 'MD').catch(() => null);
+    if (cached) return res.json({ ...cached, fromCache: true, note: 'Source unavailable. Showing cached data.' });
     res.status(500).json({ error: err.message });
   }
 }

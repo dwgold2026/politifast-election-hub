@@ -5,6 +5,7 @@
  * GET /api/collect/mn
  */
 export const config = { maxDuration: 30 };
+import { getCached, setCache } from '../lib/cache.js';
 
 function titleCase(s) {
   if (!s) return '';
@@ -74,18 +75,12 @@ export default async function handler(req, res) {
       a.lastName.localeCompare(b.lastName)
     );
 
-    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
-    res.json({
-      source: 'mn_sos',
-      updated: new Date().toISOString(),
-      totalCandidates: candidates.length,
-      withEmail: candidates.filter(c => c.email).length,
-      withPhone: candidates.filter(c => c.phone).length,
-      withWebsite: candidates.filter(c => c.website).length,
-      note: candidates.length === 0 ? 'MN filing opens Jun 2, 2026 — data not yet available' : undefined,
-      data: candidates,
-    });
+    const payload = { source: 'mn_sos', updated: new Date().toISOString(), totalCandidates: candidates.length, withEmail: candidates.filter(c => c.email).length, withPhone: candidates.filter(c => c.phone).length, withWebsite: candidates.filter(c => c.website).length, note: candidates.length === 0 ? 'MN filing opens Jun 2, 2026 — data not yet available' : undefined, data: candidates };
+    if (candidates.length > 0) await setCache('mn_sos', 'MN', payload).catch(() => {});
+    res.json(payload);
   } catch (err) {
+    const cached = await getCached('mn_sos', 'MN').catch(() => null);
+    if (cached) return res.json({ ...cached, fromCache: true, note: 'Source unavailable. Showing cached data.' });
     res.status(500).json({ error: err.message });
   }
 }

@@ -3,6 +3,7 @@
  * GET /api/collect/nc
  */
 export const config = { maxDuration: 30 };
+import { fetchWithCache } from '../lib/cache.js';
 
 function parseCSVLine(line) {
   const result = [];
@@ -47,8 +48,9 @@ function classifyOffice(c) {
 
 export default async function handler(req, res) {
   try {
+    const result = await fetchWithCache('ncsbe', 'NC', async () => {
     const resp = await fetch('https://s3.amazonaws.com/dl.ncsbe.gov/Elections/2026/Candidate%20Filing/Candidate_Listing_2026.csv', { redirect: 'follow' });
-    if (!resp.ok) return res.status(502).json({ error: `NC SBE returned ${resp.status}` });
+    if (!resp.ok) throw new Error(`NC SBE returned ${resp.status}`);
     const text = await resp.text();
 
     const lines = text.split('\n');
@@ -93,15 +95,17 @@ export default async function handler(req, res) {
       a.lastName.localeCompare(b.lastName)
     );
 
-    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
-    res.json({
+    return {
       source: 'ncsbe',
-      updated: new Date().toISOString(),
       totalCandidates: candidates.length,
       withEmail: candidates.filter(c => c.email).length,
       withPhone: candidates.filter(c => c.phone).length,
       data: candidates,
+    };
     });
+
+    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

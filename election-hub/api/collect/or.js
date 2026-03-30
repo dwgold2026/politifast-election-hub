@@ -3,6 +3,7 @@
  * GET /api/collect/or
  */
 export const config = { maxDuration: 30 };
+import { getCached, setCache } from '../lib/cache.js';
 
 function titleCase(s) {
   return (s || '').toLowerCase().replace(/(?:^|\s|-)\S/g, c => c.toUpperCase());
@@ -50,15 +51,12 @@ export default async function handler(req, res) {
       }
     }
 
-    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
-    res.json({
-      source: 'orestar',
-      updated: new Date().toISOString(),
-      totalCandidates: candidates.length,
-      note: candidates.length === 0 ? 'ORESTAR data format may have changed. Use FEC data for federal candidates.' : undefined,
-      data: candidates,
-    });
+    const payload = { source: 'orestar', updated: new Date().toISOString(), totalCandidates: candidates.length, note: candidates.length === 0 ? 'ORESTAR data format may have changed. Use FEC data for federal candidates.' : undefined, data: candidates };
+    if (candidates.length > 0) await setCache('orestar', 'OR', payload).catch(() => {});
+    res.json(payload);
   } catch (err) {
+    const cached = await getCached('orestar', 'OR').catch(() => null);
+    if (cached) return res.json({ ...cached, fromCache: true, note: 'Source unavailable. Showing cached data.' });
     res.status(500).json({ error: err.message });
   }
 }

@@ -4,6 +4,7 @@
  * GET /api/collect/ga
  */
 export const config = { maxDuration: 30 };
+import { getCached, setCache } from '../lib/cache.js';
 
 function titleCase(s) {
   return (s || '').toLowerCase().replace(/(?:^|\s|-)\S/g, c => c.toUpperCase());
@@ -33,7 +34,7 @@ export default async function handler(req, res) {
     });
 
     if (!resp.ok) {
-      res.setHeader('Cache-Control', 's-maxage=3600');
+      
       return res.json({
         source: 'ga_sos',
         updated: new Date().toISOString(),
@@ -65,14 +66,12 @@ export default async function handler(req, res) {
       }
     }
 
-    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
-    res.json({
-      source: 'ga_sos',
-      updated: new Date().toISOString(),
-      totalCandidates: candidates.length,
-      data: candidates,
-    });
+    const payload = { source: 'ga_sos', updated: new Date().toISOString(), totalCandidates: candidates.length, data: candidates };
+    if (candidates.length > 0) await setCache('ga_sos', 'GA', payload).catch(() => {});
+    res.json(payload);
   } catch (err) {
+    const cached = await getCached('ga_sos', 'GA').catch(() => null);
+    if (cached) return res.json({ ...cached, fromCache: true, note: 'Source unavailable. Showing cached data.' });
     res.status(500).json({ error: err.message });
   }
 }

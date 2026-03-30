@@ -5,6 +5,7 @@
  */
 export const config = { maxDuration: 30 };
 import pdf from 'pdf-parse';
+import { fetchWithCache } from '../lib/cache.js';
 
 function titleCase(s) {
   return (s || '').toLowerCase().replace(/(?:^|\s|-)\S/g, c => c.toUpperCase());
@@ -145,16 +146,26 @@ export default async function handler(req, res) {
       // Contact enrichment is optional
     }
 
-    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
-    res.json({
+    const payload = {
       source: 'ca_sos_certified',
       updated: new Date().toISOString(),
       totalCandidates: candidates.length,
       withEmail: candidates.filter(c => c.email).length,
       withPhone: candidates.filter(c => c.phone).length,
       data: candidates,
-    });
+    };
+    // Cache successful results
+    if (candidates.length > 0) {
+      const { setCache } = await import('../lib/cache.js');
+      await setCache('ca_sos', 'CA', payload).catch(() => {});
+    }
+    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
+    res.json(payload);
   } catch (err) {
+    // Try cache on failure
+    const { getCached } = await import('../lib/cache.js');
+    const cached = await getCached('ca_sos', 'CA').catch(() => null);
+    if (cached) return res.json({ ...cached, fromCache: true, note: `Source unavailable. Showing cached data.` });
     res.status(500).json({ error: err.message });
   }
 }
