@@ -846,25 +846,23 @@ schoolNote:"Data held by county clerks.",
 notes:"Gordon term-limited. Lummis retiring. Both seats open. Only 23 counties."},
 ];
 
-function isWithin30Days(dateStr){
+function isWithinDays(dateStr,days){
   if(!dateStr) return false;
-  // Handle "Feb 13 / Jul 31, 2026" — split on "/" and check each part
   const parts=dateStr.split("/");
   const now=new Date();
-  const in30=new Date(now.getTime()+30*24*60*60*1000);
+  const cutoff=new Date(now.getTime()+days*24*60*60*1000);
   return parts.some(p=>{
-    // Ensure the part has a year; if not, borrow from the last segment
     let s=p.trim();
     if(!/\d{4}/.test(s)){
       const yearMatch=dateStr.match(/\d{4}/);
       if(yearMatch) s+=", "+yearMatch[0];
     }
     const d=new Date(s);
-    return !isNaN(d)&&d>=now&&d<=in30;
+    return !isNaN(d)&&d>=now&&d<=cutoff;
   });
 }
-function hasElectionSoon(d){
-  return isWithin30Days(d.primary)||isWithin30Days(d.general)||isWithin30Days(d.runoff);
+function hasElectionWithin(d,days){
+  return isWithinDays(d.primary,days)||isWithinDays(d.general,days)||isWithinDays(d.runoff,days);
 }
 
 const STATUS = {
@@ -901,7 +899,9 @@ function App(){
     if(filters.has("closed")&&d.status==="closed") m2=true;
     if(filters.has("open")&&(d.status==="open"||d.status==="partial")) m2=true;
     if(filters.has("star")&&["NC","IL","MN","LA","WA"].includes(d.s)) m2=true;
-    if(filters.has("soon")&&hasElectionSoon(d)) m2=true;
+    if(filters.has("in45")&&hasElectionWithin(d,45)) m2=true;
+    if(filters.has("in60")&&hasElectionWithin(d,60)) m2=true;
+    if(filters.has("in90")&&hasElectionWithin(d,90)) m2=true;
     return m1&&m2;
   }),[search,filters]);
 
@@ -955,7 +955,9 @@ function App(){
               color:filters.size===0?"#92400e":"#6b7280",
             }}>All</button>
             {[
-              {k:"soon",l:"Soon",t:"Primary, general, or runoff within 30 days"},
+              {k:"in45",l:"<45 Days",t:"Primary, general, or runoff within 45 days"},
+              {k:"in60",l:"<60 Days",t:"Primary, general, or runoff within 60 days"},
+              {k:"in90",l:"<90 Days",t:"Primary, general, or runoff within 90 days"},
               {k:"voted",l:"Voted",t:"States where the primary has already been held"},
               {k:"closed",l:"Closed",t:"Filing deadline has passed"},
               {k:"open",l:"Open",t:"Filing window is still open for candidates"},
@@ -982,7 +984,9 @@ function App(){
               color:filters.size===0?"#92400e":"#6b7280",
             }}>All</button>
             {[
-              {k:"soon",l:"Soon",t:"Primary, general, or runoff within 30 days"},
+              {k:"in45",l:"<45 Days",t:"Primary, general, or runoff within 45 days"},
+              {k:"in60",l:"<60 Days",t:"Primary, general, or runoff within 60 days"},
+              {k:"in90",l:"<90 Days",t:"Primary, general, or runoff within 90 days"},
               {k:"voted",l:"Voted",t:"States where the primary has already been held"},
               {k:"closed",l:"Closed",t:"Filing deadline has passed"},
               {k:"open",l:"Open",t:"Filing window is still open for candidates"},
