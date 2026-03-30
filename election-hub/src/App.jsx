@@ -890,14 +890,15 @@ function App(){
   const [candLoading,setCandLoading]=useState(false);
   const [candFilter,setCandFilter]=useState("");
   const [candLevelFilter,setCandLevelFilter]=useState("all");
+  const [sortCol,setSortCol]=useState("name");
+  const [sortAsc,setSortAsc]=useState(true);
 
   // Load candidate data from API when state changes
   const loadCandidates=useCallback((state)=>{
     if(!state) return;
     setCandidates([]);
     setCandLoading(true);
-    // Gold standard states have dedicated collectors; all states have FEC federal data
-    const stateCollectors={NC:"/api/collect/nc"};
+    const stateCollectors={NC:"/api/collect/nc",MN:"/api/collect/mn",CA:"/api/collect/ca",GA:"/api/collect/ga",MD:"/api/collect/md",OR:"/api/collect/or"};
     const fetches=[
       fetch(`/api/collect/fec?state=${state}`).then(r=>r.ok?r.json():null).catch(()=>null),
     ];
@@ -918,8 +919,13 @@ function App(){
 
   useEffect(()=>{ loadCandidates(sel); },[sel,loadCandidates]);
 
+  const toggleSort=(col)=>{
+    if(sortCol===col) setSortAsc(!sortAsc);
+    else { setSortCol(col); setSortAsc(true); }
+  };
+
   const filteredCandidates=useMemo(()=>{
-    return candidates.filter(c=>{
+    const list=candidates.filter(c=>{
       if(candLevelFilter!=="all"&&c.officeLevel!==candLevelFilter) return false;
       if(candFilter){
         const q=candFilter.toLowerCase();
@@ -927,7 +933,16 @@ function App(){
       }
       return true;
     });
-  },[candidates,candFilter,candLevelFilter]);
+    list.sort((a,b)=>{
+      let va=a[sortCol]||"", vb=b[sortCol]||"";
+      if(typeof va==="string") va=va.toLowerCase();
+      if(typeof vb==="string") vb=vb.toLowerCase();
+      if(va<vb) return sortAsc?-1:1;
+      if(va>vb) return sortAsc?1:-1;
+      return 0;
+    });
+    return list;
+  },[candidates,candFilter,candLevelFilter,sortCol,sortAsc]);
 
   const exportExcel=useCallback(()=>{
     const rows=filteredCandidates.map(c=>({
@@ -1269,11 +1284,14 @@ function App(){
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
             <thead>
               <tr style={{background:"#f8fafc",position:"sticky",top:0}}>
-                <th style={{padding:"6px 8px",textAlign:"left",fontWeight:700,borderBottom:"2px solid #e5e7eb",color:"#374151"}}>Name</th>
-                <th style={{padding:"6px 8px",textAlign:"left",fontWeight:700,borderBottom:"2px solid #e5e7eb",color:"#374151"}}>Office</th>
-                <th style={{padding:"6px 8px",textAlign:"left",fontWeight:700,borderBottom:"2px solid #e5e7eb",color:"#374151"}}>Party</th>
-                {!mobile&&<th style={{padding:"6px 8px",textAlign:"left",fontWeight:700,borderBottom:"2px solid #e5e7eb",color:"#374151"}}>Email</th>}
-                {!mobile&&<th style={{padding:"6px 8px",textAlign:"left",fontWeight:700,borderBottom:"2px solid #e5e7eb",color:"#374151"}}>Phone</th>}
+                {[["name","Name"],["office","Office"],["party","Party"],
+                  ...(!mobile?[["email","Email"],["phone","Phone"]]:[])
+                ].map(([key,label])=>(
+                  <th key={key} onClick={()=>toggleSort(key)} style={{
+                    padding:"6px 8px",textAlign:"left",fontWeight:700,borderBottom:"2px solid #e5e7eb",
+                    color:sortCol===key?"#1d4ed8":"#374151",cursor:"pointer",userSelect:"none",
+                  }}>{label} {sortCol===key?(sortAsc?"▲":"▼"):""}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
