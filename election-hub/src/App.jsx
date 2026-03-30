@@ -1515,7 +1515,7 @@ function App(){
             <thead>
               <tr style={{background:"#f8fafc",position:"sticky",top:0}}>
                 {[["name","Name"],["office","Office"],["party","Party"],
-                  ...(!mobile?[["email","Email"],["phone","Phone"]]:[])
+                  ...(!mobile?[["email","Email"],["phone","Phone"],["website","Website"]]:[])
                 ].map(([key,label])=>(
                   <th key={key} onClick={()=>toggleSort(key)} style={{
                     padding:"6px 8px",textAlign:"left",fontWeight:700,borderBottom:"2px solid #e5e7eb",
@@ -1537,6 +1537,7 @@ function App(){
                   </td>
                   {!mobile&&<td style={{padding:"5px 8px",fontSize:11,color:c.email?"#059669":"#d1d5db"}}>{c.email||"—"}</td>}
                   {!mobile&&<td style={{padding:"5px 8px",fontSize:11,color:c.phone?"#059669":"#d1d5db"}}>{c.phone||"—"}</td>}
+                  {!mobile&&<td style={{padding:"5px 8px",fontSize:11}}>{c.website?<a href={c.website.startsWith("http")?c.website:`https://${c.website}`} target="_blank" rel="noopener noreferrer" style={{color:"#1d4ed8"}}>{c.website.replace(/^https?:\/\//,"").slice(0,30)}</a>:<span style={{color:"#d1d5db"}}>—</span>}</td>}
                 </tr>
               ))}
             </tbody>
@@ -1550,6 +1551,7 @@ function App(){
         <div style={{display:"flex",gap:12,marginTop:8,fontSize:11,color:"#6b7280"}}>
           <span>With email: {filteredCandidates.filter(c=>c.email).length}</span>
           <span>With phone: {filteredCandidates.filter(c=>c.phone).length}</span>
+          <span>With website: {filteredCandidates.filter(c=>c.website).length}</span>
         </div>
         </>
         ):(
