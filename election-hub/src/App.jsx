@@ -875,6 +875,10 @@ const STATUS = {
 
 
 function App(){
+  const [authed,setAuthed]=useState(()=>typeof sessionStorage!=="undefined"&&sessionStorage.getItem("eh_auth")==="1");
+  const [loginPw,setLoginPw]=useState("");
+  const [loginErr,setLoginErr]=useState("");
+  const [view,setView]=useState("dashboard"); // "dashboard" or "state"
   const [sel,setSel]=useState("NC");
   const [search,setSearch]=useState("");
   const [filters,setFilters]=useState(new Set());
@@ -1017,14 +1021,55 @@ function App(){
   const st=cur?STATUS[cur.status]:null;
   const isStar=cur&&["NC","IL","MN","LA","WA"].includes(cur.s);
 
+  const handleLogin=async(e)=>{
+    e.preventDefault();
+    setLoginErr("");
+    try{
+      const r=await fetch("/api/auth",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:loginPw})});
+      if(r.ok){setAuthed(true);sessionStorage.setItem("eh_auth","1");}
+      else setLoginErr("Invalid password");
+    }catch{setLoginErr("Login failed");}
+  };
+
+  const selectState=(code)=>{setSel(code);setView("state");};
+
+  // Compute dashboard stats
+  const battlegrounds=S.filter(d=>["GA","AZ","MI","WI","PA","NV","NC","NH","ME","OH"].includes(d.s));
+  const openGov=S.filter(d=>d.govOpen);
+  const openSenate=S.filter(d=>d.senOpen);
+  const soonStates=S.filter(d=>hasElectionWithin(d,60));
+
+  // --- Auth gate ---
+  if(!authed) return(
+    <div style={{fontFamily:"'DM Sans',system-ui,sans-serif",minHeight:"100vh",background:"linear-gradient(135deg,#0c1222 0%,#1a1a3e 100%)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <form onSubmit={handleLogin} style={{background:"#fff",borderRadius:16,padding:"40px 36px",width:360,maxWidth:"90vw",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+        <h1 style={{fontFamily:"'Newsreader',serif",fontSize:22,fontWeight:800,color:"#0f172a",margin:"0 0 4px",textAlign:"center"}}>2026 Election Research Hub</h1>
+        <p style={{fontSize:12,color:"#64748b",textAlign:"center",margin:"0 0 24px"}}>PolitiFast Internal Tool</p>
+        <input type="password" value={loginPw} onChange={e=>setLoginPw(e.target.value)} placeholder="Enter password"
+          style={{width:"100%",padding:"12px 16px",borderRadius:8,border:"1px solid #d1d5db",fontSize:14,marginBottom:12,outline:"none"}} autoFocus/>
+        {loginErr&&<div style={{color:"#dc2626",fontSize:12,marginBottom:8,textAlign:"center"}}>{loginErr}</div>}
+        <button type="submit" style={{width:"100%",padding:"12px",borderRadius:8,background:"#f59e0b",color:"#fff",fontWeight:700,fontSize:14,border:"none",cursor:"pointer"}}>Sign In</button>
+      </form>
+    </div>
+  );
+
   return(
   <div style={{fontFamily:"'DM Sans',system-ui,sans-serif",minHeight:"100vh",background:"#f5f6f8"}}>
 
 
   <header style={{background:"linear-gradient(135deg,#0c1222 0%,#1a1a3e 100%)",padding:mobile?"14px 12px 10px":"18px 24px 14px",borderBottom:"3px solid #f59e0b"}}>
     <div style={{maxWidth:1300,margin:"0 auto"}}>
-      <h1 style={{fontFamily:"'Newsreader',serif",fontSize:mobile?19:24,fontWeight:800,color:"#fff",margin:"0 0 2px",letterSpacing:-.3}}>2026 Election Research Hub</h1>
-      <p style={{fontSize:mobile?10:12,color:"#94a3b8",margin:0}}>{mobile?"All 50 states — filing, primaries, data sources, county offices":"Filing deadlines · Primary dates · Candidate data sources · County office directories — all 50 states"}</p>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+        <div>
+          <h1 onClick={()=>setView("dashboard")} style={{fontFamily:"'Newsreader',serif",fontSize:mobile?19:24,fontWeight:800,color:"#fff",margin:"0 0 2px",letterSpacing:-.3,cursor:"pointer"}}>2026 Election Research Hub</h1>
+          <p style={{fontSize:mobile?10:12,color:"#94a3b8",margin:0}}>{mobile?"All 50 states":"Filing deadlines · Primary dates · Candidate data sources · County office directories — all 50 states"}</p>
+        </div>
+        <div style={{display:"flex",gap:6}}>
+          <button onClick={()=>setView("dashboard")} style={{padding:"5px 14px",borderRadius:6,fontSize:11,fontWeight:700,border:"none",cursor:"pointer",background:view==="dashboard"?"#f59e0b":"rgba(255,255,255,0.1)",color:view==="dashboard"?"#0c1222":"#94a3b8"}}>Dashboard</button>
+          <button onClick={()=>setView("state")} style={{padding:"5px 14px",borderRadius:6,fontSize:11,fontWeight:700,border:"none",cursor:"pointer",background:view==="state"?"#f59e0b":"rgba(255,255,255,0.1)",color:view==="state"?"#0c1222":"#94a3b8"}}>State Detail</button>
+          <button onClick={()=>{setAuthed(false);sessionStorage.removeItem("eh_auth");}} style={{padding:"5px 14px",borderRadius:6,fontSize:11,fontWeight:700,border:"none",cursor:"pointer",background:"rgba(255,255,255,0.08)",color:"#64748b"}}>Logout</button>
+        </div>
+      </div>
       <div style={{display:"flex",gap:mobile?10:16,marginTop:mobile?8:12,flexWrap:"wrap"}}>
         {[
           {n:S.filter(d=>d.status==="voted").length,l:"Primaries Held",c:"#4ade80"},
@@ -1042,6 +1087,120 @@ function App(){
     </div>
   </header>
 
+  {/* === DASHBOARD VIEW === */}
+  {view==="dashboard"&&(
+  <div style={{maxWidth:1300,margin:"0 auto",padding:mobile?"12px 8px":"20px 16px"}}>
+
+    {/* Key Metrics Row */}
+    <div style={{display:"grid",gridTemplateColumns:mobile?"repeat(2,1fr)":"repeat(4,1fr)",gap:10,marginBottom:16}}>
+      {[
+        {n:openGov.length,l:"Open Governor Races",c:"#dc2626",bg:"#fef2f2",sub:openGov.slice(0,5).map(d=>d.s).join(", ")+(openGov.length>5?`… +${openGov.length-5}`:"")},
+        {n:openSenate.length,l:"Open Senate Seats",c:"#7c3aed",bg:"#f5f3ff",sub:openSenate.map(d=>d.s).join(", ")},
+        {n:soonStates.length,l:"Elections <60 Days",c:"#d97706",bg:"#fffbeb",sub:soonStates.slice(0,5).map(d=>d.s).join(", ")+(soonStates.length>5?`… +${soonStates.length-5}`:"")},
+        {n:battlegrounds.length,l:"Key Battlegrounds",c:"#1d4ed8",bg:"#eff6ff",sub:battlegrounds.map(d=>d.s).join(", ")},
+      ].map(({n,l,c,bg,sub})=>(
+        <div key={l} style={{background:bg,border:`1px solid ${c}22`,borderRadius:12,padding:"16px 18px"}}>
+          <div style={{fontSize:28,fontWeight:800,color:c,fontFamily:"'JetBrains Mono'"}}>{n}</div>
+          <div style={{fontSize:12,fontWeight:700,color:c,marginBottom:4}}>{l}</div>
+          <div style={{fontSize:10,color:"#6b7280"}}>{sub}</div>
+        </div>
+      ))}
+    </div>
+
+    {/* Battleground States */}
+    <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:"16px 20px",marginBottom:16}}>
+      <div style={{fontSize:11,fontWeight:700,color:"#1d4ed8",letterSpacing:1,textTransform:"uppercase",marginBottom:12}}>Key Battleground States</div>
+      <div style={{display:"grid",gridTemplateColumns:mobile?"1fr":"repeat(2,1fr)",gap:8}}>
+        {battlegrounds.map(d=>{
+          const t=STATUS[d.status];
+          return(
+            <div key={d.s} onClick={()=>selectState(d.s)} style={{
+              display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:8,
+              background:"#f8fafc",border:"1px solid #e5e7eb",cursor:"pointer",
+            }}>
+              <span style={{fontFamily:"'JetBrains Mono'",fontSize:14,fontWeight:800,color:"#0f172a",minWidth:28}}>{d.s}</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:600,color:"#0f172a"}}>{d.n}</div>
+                <div style={{fontSize:10,color:"#6b7280"}}>
+                  {d.gov&&d.govOpen?"Gov (Open) · ":""}
+                  {d.senate&&d.senOpen?"Senate (Open) · ":""}
+                  {d.senate&&!d.senOpen&&d.senNote?`Senate: ${d.senNote} · `:""}
+                  Primary: {d.primary}
+                </div>
+              </div>
+              <span style={{padding:"2px 8px",borderRadius:10,fontSize:9,fontWeight:700,color:t.c,background:t.bg}}>{t.l}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+
+    {/* Open Seats Grid */}
+    <div style={{display:"grid",gridTemplateColumns:mobile?"1fr":"1fr 1fr",gap:16,marginBottom:16}}>
+      <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:"16px 20px"}}>
+        <div style={{fontSize:11,fontWeight:700,color:"#dc2626",letterSpacing:1,textTransform:"uppercase",marginBottom:10}}>Open Governor Races ({openGov.length})</div>
+        {openGov.map(d=>(
+          <div key={d.s} onClick={()=>selectState(d.s)} style={{
+            display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f1f5f9",cursor:"pointer",fontSize:12,
+          }}>
+            <span><strong>{d.s}</strong> {d.n}</span>
+            <span style={{color:"#6b7280",fontSize:11}}>{d.govNote||"Open"}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:"16px 20px"}}>
+        <div style={{fontSize:11,fontWeight:700,color:"#7c3aed",letterSpacing:1,textTransform:"uppercase",marginBottom:10}}>Open Senate Seats ({openSenate.length})</div>
+        {openSenate.map(d=>(
+          <div key={d.s} onClick={()=>selectState(d.s)} style={{
+            display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f1f5f9",cursor:"pointer",fontSize:12,
+          }}>
+            <span><strong>{d.s}</strong> {d.n}</span>
+            <span style={{color:"#6b7280",fontSize:11}}>{d.senNote||"Open"}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    {/* Upcoming Elections */}
+    {soonStates.length>0&&(
+    <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:"16px 20px",marginBottom:16}}>
+      <div style={{fontSize:11,fontWeight:700,color:"#d97706",letterSpacing:1,textTransform:"uppercase",marginBottom:10}}>Elections Within 60 Days</div>
+      <div style={{display:"grid",gridTemplateColumns:mobile?"1fr":"repeat(3,1fr)",gap:8}}>
+        {soonStates.map(d=>(
+          <div key={d.s} onClick={()=>selectState(d.s)} style={{
+            padding:"10px 14px",borderRadius:8,background:"#fffbeb",border:"1px solid #fde68a",cursor:"pointer",
+          }}>
+            <div style={{fontWeight:700,fontSize:13,color:"#92400e"}}>{d.s} — {d.n}</div>
+            <div style={{fontSize:11,color:"#78350f",marginTop:2}}>
+              {d.primary&&hasElectionWithin(d,60)&&isWithinDays(d.primary,60)?`Primary: ${d.primary}`:""}
+              {d.runoff&&isWithinDays(d.runoff,60)?` · Runoff: ${d.runoff}`:""}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+    )}
+
+    {/* All States Quick Grid */}
+    <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:"16px 20px"}}>
+      <div style={{fontSize:11,fontWeight:700,color:"#374151",letterSpacing:1,textTransform:"uppercase",marginBottom:10}}>All 50 States</div>
+      <div style={{display:"grid",gridTemplateColumns:mobile?"repeat(3,1fr)":"repeat(10,1fr)",gap:4}}>
+        {S.map(d=>{
+          const t=STATUS[d.status];
+          return(
+            <button key={d.s} onClick={()=>selectState(d.s)} style={{
+              padding:"8px 4px",borderRadius:6,border:`1px solid ${t.c}44`,background:t.bg,
+              cursor:"pointer",textAlign:"center",fontSize:12,fontWeight:700,color:t.c,
+            }}>{d.s}</button>
+          );
+        })}
+      </div>
+    </div>
+  </div>
+  )}
+
+  {/* === STATE DETAIL VIEW === */}
+  {view==="state"&&(
   <div style={{maxWidth:1300,margin:"0 auto",padding:mobile?"8px 6px":"12px 10px",display:"flex",flexDirection:mobile?"column":"row",gap:mobile?8:12}}>
     {/* Sidebar / Mobile Nav */}
     <div style={{width:mobile?"100%":220,flexShrink:0,display:"flex",flexDirection:"column",gap:6}}>
@@ -1282,20 +1441,19 @@ function App(){
         </>
       )}
       {/* Candidate Data */}
-      {candidates.length>0&&(
       <div style={{background:"#fff",border:"1px solid #e5e7eb",borderLeft:"4px solid #1d4ed8",borderRadius:"0 10px 10px 0",padding:"14px 18px",marginTop:10}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:10}}>
-          <div style={{fontSize:10,fontWeight:700,color:"#1d4ed8",letterSpacing:1,textTransform:"uppercase"}}>
-            Candidate Data — {filteredCandidates.length} candidates
+        <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:10}}>
+          <div style={{fontSize:10,fontWeight:700,color:"#1d4ed8",letterSpacing:1,textTransform:"uppercase",marginRight:"auto"}}>
+            Candidate Data {candidates.length>0?`— ${filteredCandidates.length} candidates`:""}
           </div>
-          <button onClick={exportExcel} style={{
+          {candidates.length>0&&<button onClick={exportExcel} style={{
             padding:"6px 16px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",
             background:"#1d4ed8",color:"#fff",border:"none",
-          }}>Download Excel</button>
+          }}>Download Excel</button>}
           <button onClick={()=>loadCandidates(sel)} style={{
             padding:"6px 16px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",
             background:"#fff",color:"#1d4ed8",border:"1px solid #1d4ed8",
-          }}>Refresh Data</button>
+          }}>{candLoading?"Loading...":"Refresh Data"}</button>
           <label style={{
             padding:"6px 16px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",
             background:"#fff",color:"#059669",border:"1px solid #059669",display:"inline-block",
@@ -1311,6 +1469,8 @@ function App(){
           }}>{uploadStatus}</div>
         )}
 
+        {candidates.length>0?(
+        <>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
           <input type="text" placeholder="Search candidates..." value={candFilter} onChange={e=>setCandFilter(e.target.value)}
             style={{padding:"5px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:12,flex:1,minWidth:140}}/>
@@ -1364,25 +1524,21 @@ function App(){
             </div>
           )}
         </div>
-        {filteredCandidates.length>0&&(
-          <div style={{display:"flex",gap:12,marginTop:8,fontSize:11,color:"#6b7280"}}>
-            <span>With email: {filteredCandidates.filter(c=>c.email).length}</span>
-            <span>With phone: {filteredCandidates.filter(c=>c.phone).length}</span>
+        <div style={{display:"flex",gap:12,marginTop:8,fontSize:11,color:"#6b7280"}}>
+          <span>With email: {filteredCandidates.filter(c=>c.email).length}</span>
+          <span>With phone: {filteredCandidates.filter(c=>c.phone).length}</span>
+        </div>
+        </>
+        ):(
+          <div style={{padding:16,textAlign:"center",color:"#6b7280",fontSize:12}}>
+            {candLoading?"Loading candidate data...":"No candidate data yet. Click Refresh Data to pull from sources, or Upload CSV to add manually."}
           </div>
         )}
       </div>
-      )}
-      {candLoading&&(
-        <div style={{padding:20,textAlign:"center",color:"#6b7280",fontSize:12,marginTop:10}}>Loading candidate data...</div>
-      )}
-      {!candLoading&&candidates.length===0&&(
-        <div style={{background:"#f8fafc",border:"1px solid #e5e7eb",borderRadius:10,padding:"14px 18px",marginTop:10,textAlign:"center"}}>
-          <div style={{fontSize:12,color:"#6b7280"}}>No candidate data available yet for {cur.n}. Federal data is available for most states — run the collection scripts to populate.</div>
-        </div>
-      )}
     </div>
     )}
   </div>
+  )}
   </div>
   );
 }
