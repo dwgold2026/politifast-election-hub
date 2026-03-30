@@ -878,8 +878,31 @@ function App(){
   const [authed,setAuthed]=useState(()=>typeof sessionStorage!=="undefined"&&sessionStorage.getItem("eh_auth")==="1");
   const [loginPw,setLoginPw]=useState("");
   const [loginErr,setLoginErr]=useState("");
-  const [view,setView]=useState("dashboard"); // "dashboard" or "state"
-  const [sel,setSel]=useState("NC");
+
+  // Hash-based routing for browser back/forward
+  function parseHash(){
+    const h=window.location.hash.slice(1);
+    if(h.startsWith("state/")){return{view:"state",sel:h.slice(6).toUpperCase()||"NC"};}
+    return{view:"dashboard",sel:"NC"};
+  }
+  const initial=typeof window!=="undefined"&&window.location.hash?parseHash():{view:"dashboard",sel:"NC"};
+  const [view,setViewRaw]=useState(initial.view);
+  const [sel,setSelRaw]=useState(initial.sel);
+
+  const navigate=(newView,newSel)=>{
+    const hash=newView==="state"?`#state/${newSel||sel}`:"#dashboard";
+    window.history.pushState(null,"",hash);
+    setViewRaw(newView);
+    if(newSel) setSelRaw(newSel);
+  };
+  const setView=(v)=>navigate(v);
+  const setSel=(s)=>{setSelRaw(s);navigate("state",s);};
+
+  useEffect(()=>{
+    const onPop=()=>{const p=parseHash();setViewRaw(p.view);setSelRaw(p.sel);};
+    window.addEventListener("popstate",onPop);
+    return()=>window.removeEventListener("popstate",onPop);
+  },[]);
   const [search,setSearch]=useState("");
   const [filters,setFilters]=useState(new Set());
   const [mobile,setMobile]=useState(()=>typeof window!=="undefined"&&window.innerWidth<768);
@@ -1031,7 +1054,7 @@ function App(){
     }catch{setLoginErr("Login failed");}
   };
 
-  const selectState=(code)=>{setSel(code);setView("state");};
+  const selectState=(code)=>setSel(code);
 
   // Compute dashboard stats
   const battlegrounds=S.filter(d=>["GA","AZ","MI","WI","PA","NV","NC","NH","ME","OH"].includes(d.s));
