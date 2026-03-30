@@ -878,7 +878,7 @@ const STATUS = {
 function App(){
   const [sel,setSel]=useState("NC");
   const [search,setSearch]=useState("");
-  const [statusFilter,setStatusFilter]=useState("all");
+  const [filters,setFilters]=useState(new Set());
   const [mobile,setMobile]=useState(()=>typeof window!=="undefined"&&window.innerWidth<768);
 
   useEffect(()=>{
@@ -887,11 +887,23 @@ function App(){
     return ()=>window.removeEventListener("resize",onResize);
   },[]);
 
+  const toggleFilter=(k)=>setFilters(prev=>{
+    const next=new Set(prev);
+    if(next.has(k)) next.delete(k); else next.add(k);
+    return next;
+  });
+
   const filtered=useMemo(()=>S.filter(d=>{
     const m1=!search||d.n.toLowerCase().includes(search.toLowerCase())||d.s.toLowerCase().includes(search.toLowerCase());
-    const m2=statusFilter==="all"||d.status===statusFilter||(statusFilter==="star"&&["NC","IL","MN","LA","WA"].includes(d.s))||(statusFilter==="soon"&&hasElectionSoon(d));
+    if(filters.size===0) return m1;
+    let m2=false;
+    if(filters.has("voted")&&d.status==="voted") m2=true;
+    if(filters.has("closed")&&d.status==="closed") m2=true;
+    if(filters.has("open")&&(d.status==="open"||d.status==="partial")) m2=true;
+    if(filters.has("star")&&["NC","IL","MN","LA","WA"].includes(d.s)) m2=true;
+    if(filters.has("soon")&&hasElectionSoon(d)) m2=true;
     return m1&&m2;
-  }),[search,statusFilter]);
+  }),[search,filters]);
 
   const cur=S.find(d=>d.s===sel);
   const st=cur?STATUS[cur.status]:null;
@@ -936,19 +948,24 @@ function App(){
             </select>
           </div>
           <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
+            <button onClick={()=>setFilters(new Set())} title="Show all 50 states" style={{
+              padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",
+              border:filters.size===0?"2px solid #f59e0b":"1px solid #e5e7eb",
+              background:filters.size===0?"#fffbeb":"#fff",
+              color:filters.size===0?"#92400e":"#6b7280",
+            }}>All</button>
             {[
-              {k:"all",l:"All",t:"Show all 50 states"},
               {k:"soon",l:"Soon",t:"Primary, general, or runoff within 30 days"},
               {k:"voted",l:"Voted",t:"States where the primary has already been held"},
               {k:"closed",l:"Closed",t:"Filing deadline has passed"},
               {k:"open",l:"Open",t:"Filing window is still open for candidates"},
               {k:"star",l:"★ Best",t:"States that centralize ALL candidate data including local and school board"},
             ].map(f=>(
-              <button key={f.k} onClick={()=>setStatusFilter(f.k)} title={f.t} style={{
+              <button key={f.k} onClick={()=>toggleFilter(f.k)} title={f.t} style={{
                 padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",
-                border:statusFilter===f.k?"2px solid #f59e0b":"1px solid #e5e7eb",
-                background:statusFilter===f.k?"#fffbeb":"#fff",
-                color:statusFilter===f.k?"#92400e":"#6b7280",
+                border:filters.has(f.k)?"2px solid #f59e0b":"1px solid #e5e7eb",
+                background:filters.has(f.k)?"#fffbeb":"#fff",
+                color:filters.has(f.k)?"#92400e":"#6b7280",
               }}>{f.l}</button>
             ))}
           </div>
@@ -958,19 +975,24 @@ function App(){
           <input type="text" placeholder="Search states..." value={search} onChange={e=>setSearch(e.target.value)}
             style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #d1d5db",fontSize:13,outline:"none"}}/>
           <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
+            <button onClick={()=>setFilters(new Set())} title="Show all 50 states" style={{
+              padding:"3px 9px",borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer",
+              border:filters.size===0?"2px solid #f59e0b":"1px solid #e5e7eb",
+              background:filters.size===0?"#fffbeb":"#fff",
+              color:filters.size===0?"#92400e":"#6b7280",
+            }}>All</button>
             {[
-              {k:"all",l:"All",t:"Show all 50 states"},
               {k:"soon",l:"Soon",t:"Primary, general, or runoff within 30 days"},
               {k:"voted",l:"Voted",t:"States where the primary has already been held"},
               {k:"closed",l:"Closed",t:"Filing deadline has passed"},
               {k:"open",l:"Open",t:"Filing window is still open for candidates"},
               {k:"star",l:"★ Best Data",t:"States that centralize ALL candidate data including local and school board"},
             ].map(f=>(
-              <button key={f.k} onClick={()=>setStatusFilter(f.k)} title={f.t} style={{
+              <button key={f.k} onClick={()=>toggleFilter(f.k)} title={f.t} style={{
                 padding:"3px 9px",borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer",
-                border:statusFilter===f.k?"2px solid #f59e0b":"1px solid #e5e7eb",
-                background:statusFilter===f.k?"#fffbeb":"#fff",
-                color:statusFilter===f.k?"#92400e":"#6b7280",
+                border:filters.has(f.k)?"2px solid #f59e0b":"1px solid #e5e7eb",
+                background:filters.has(f.k)?"#fffbeb":"#fff",
+                color:filters.has(f.k)?"#92400e":"#6b7280",
               }}>{f.l}</button>
             ))}
           </div>
