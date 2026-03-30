@@ -893,7 +893,9 @@ function App(){
   const [sortCol,setSortCol]=useState("name");
   const [sortAsc,setSortAsc]=useState(true);
 
-  // Load candidate data from API when state changes
+  const [uploadStatus,setUploadStatus]=useState(null);
+
+  // Load candidate data from API when state changes (automated + manual uploads)
   const loadCandidates=useCallback((state)=>{
     if(!state) return;
     setCandidates([]);
@@ -901,14 +903,24 @@ function App(){
     const stateCollectors={NC:"/api/collect/nc",MN:"/api/collect/mn",CA:"/api/collect/ca",GA:"/api/collect/ga",MD:"/api/collect/md",OR:"/api/collect/or"};
     const fetches=[
       fetch(`/api/collect/fec?state=${state}`).then(r=>r.ok?r.json():null).catch(()=>null),
+      // Always check for manual uploads
+      fetch(`/api/history?source=manual_${state.toLowerCase()}&state=${state}`).then(r=>r.ok?r.json():null).catch(()=>null),
     ];
     if(stateCollectors[state]){
       fetches.push(fetch(stateCollectors[state]).then(r=>r.ok?r.json():null).catch(()=>null));
     }
-    Promise.all(fetches).then(results=>{
+    Promise.all(fetches).then(async results=>{
       const byKey=new Map();
       for(const result of results){
         if(!result) continue;
+        // History endpoint returns metadata, not data — fetch the latest snapshot
+        if(result.latest&&result.latest.date){
+          const snap=await fetch(`/api/history?source=manual_${state.toLowerCase()}&state=${state}&date=${result.latest.date}`).then(r=>r.ok?r.json():null).catch(()=>null);
+          if(snap&&Array.isArray(snap.data)){
+            for(const c of snap.data) byKey.set(`${c.name}|${c.office}`,c);
+          }
+          continue;
+        }
         const list=Array.isArray(result.data)?result.data:[];
         for(const c of list) byKey.set(`${c.name}|${c.office}`,c);
       }
@@ -916,6 +928,28 @@ function App(){
       setCandLoading(false);
     });
   },[]);
+
+  const handleUpload=useCallback(async(file)=>{
+    if(!file||!sel) return;
+    setUploadStatus("Uploading...");
+    const text=await file.text();
+    try{
+      const resp=await fetch("/api/upload",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({state:sel,csv:text}),
+      });
+      const result=await resp.json();
+      if(result.success){
+        setUploadStatus(`Uploaded ${result.uploaded} rows: ${result.newCandidates} new, ${result.enrichedExisting} enriched. Total: ${result.totalAfterMerge}`);
+        loadCandidates(sel);
+      } else {
+        setUploadStatus(`Error: ${result.error}`);
+      }
+    }catch(err){
+      setUploadStatus(`Upload failed: ${err.message}`);
+    }
+  },[sel,loadCandidates]);
 
   useEffect(()=>{ loadCandidates(sel); },[sel,loadCandidates]);
 
@@ -1262,7 +1296,20 @@ function App(){
             padding:"6px 16px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",
             background:"#fff",color:"#1d4ed8",border:"1px solid #1d4ed8",
           }}>Refresh Data</button>
+          <label style={{
+            padding:"6px 16px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",
+            background:"#fff",color:"#059669",border:"1px solid #059669",display:"inline-block",
+          }}>
+            Upload CSV
+            <input type="file" accept=".csv,.txt" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleUpload(e.target.files[0]);e.target.value="";}}/>
+          </label>
         </div>
+        {uploadStatus&&(
+          <div style={{padding:"6px 12px",borderRadius:6,fontSize:11,marginBottom:8,
+            background:uploadStatus.startsWith("Error")||uploadStatus.startsWith("Upload failed")?"#fef2f2":"#ecfdf5",
+            color:uploadStatus.startsWith("Error")||uploadStatus.startsWith("Upload failed")?"#991b1b":"#065f46",
+          }}>{uploadStatus}</div>
+        )}
 
         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
           <input type="text" placeholder="Search candidates..." value={candFilter} onChange={e=>setCandFilter(e.target.value)}
