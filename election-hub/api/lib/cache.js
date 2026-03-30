@@ -13,7 +13,7 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN,
 });
 
-const CACHE_TTL = 7 * 24 * 60 * 60; // 7 days in seconds
+// No TTL — cached data persists indefinitely until overwritten by a fresh fetch
 
 /**
  * Get cached candidate data for a source+state combo
@@ -41,7 +41,7 @@ export async function setCache(source, state, data) {
       cachedAt: new Date().toISOString(),
       ...data,
     };
-    await redis.set(key, JSON.stringify(payload), { ex: CACHE_TTL });
+    await redis.set(key, JSON.stringify(payload));
     return true;
   } catch {
     return false;
