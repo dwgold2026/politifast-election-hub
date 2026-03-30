@@ -1,14 +1,13 @@
 /**
- * Redis cache layer for candidate data.
- * Stores collected data so we don't lose it if a source goes down.
+ * Redis cache layer for candidate data — append-only versioned snapshots.
  *
- * Safety rules:
- * - Fresh data only overwrites cache if it has MORE or EQUAL candidates
- * - If fresh data has significantly fewer candidates (>30% drop), cache is kept
- * - Empty fetches never overwrite existing cache
- * - All cache entries are indefinite (no TTL)
+ * Every pull is stored as a dated snapshot. Data is never overwritten or deleted.
+ * The API always serves the latest snapshot.
  *
- * Keys: "candidates:{source}:{state}" or "candidates:{source}"
+ * Key structure:
+ *   candidates:{source}:{state}:{YYYY-MM-DD}  — dated snapshot
+ *   candidates:{source}:{state}:latest         — pointer to most recent date
+ *   candidates:{source}:{state}:history        — list of all pull dates
  */
 import { Redis } from '@upstash/redis';
 
@@ -17,15 +16,27 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN,
 });
 
+function today() {
+  return new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+}
+
+function baseKey(source, state) {
+  return state ? `candidates:${source}:${state}` : `candidates:${source}`;
+}
+
 /**
- * Get cached candidate data for a source+state combo
+ * Get the latest snapshot for a source+state
  */
 export async function getCached(source, state) {
   try {
-    const key = state ? `candidates:${source}:${state}` : `candidates:${source}`;
-    const cached = await redis.get(key);
-    if (cached && typeof cached === 'object') return cached;
-    if (cached && typeof cached === 'string') return JSON.parse(cached);
+    const base = baseKey(source, state);
+    // Get the latest date pointer
+    const latestDate = await redis.get(`${base}:latest`);
+    if (!latestDate) return null;
+    // Get that snapshot
+    const cached = await redis.get(`${base}:${latestDate}`);
+    if (cached && typeof cached === 'object') return { ...cached, snapshotDate: latestDate };
+    if (cached && typeof cached === 'string') return { ...JSON.parse(cached), snapshotDate: latestDate };
     return null;
   } catch {
     return null;
@@ -33,51 +44,76 @@ export async function getCached(source, state) {
 }
 
 /**
- * Store candidate data in cache — only if it passes safety checks
- * Returns { saved: boolean, reason: string }
+ * Store a new dated snapshot — never overwrites previous snapshots.
+ * Returns { saved: boolean, reason: string, date: string }
  */
 export async function setCache(source, state, data) {
   try {
-    const key = state ? `candidates:${source}:${state}` : `candidates:${source}`;
+    const base = baseKey(source, state);
+    const date = today();
     const freshCount = Array.isArray(data.data) ? data.data.length : 0;
 
-    // Never cache empty data
-    if (freshCount === 0) return { saved: false, reason: 'Fresh data is empty — cache preserved' };
-
-    // Check existing cache
-    const existing = await getCached(source, state);
-    const existingCount = existing && Array.isArray(existing.data) ? existing.data.length : 0;
-
-    // If existing cache has data, only overwrite if fresh data isn't a major regression
-    if (existingCount > 0) {
-      const dropPercent = ((existingCount - freshCount) / existingCount) * 100;
-
-      if (dropPercent > 30) {
-        // Fresh data lost more than 30% of candidates — suspicious, keep cache
-        return {
-          saved: false,
-          reason: `Fresh data has ${freshCount} candidates vs ${existingCount} cached (${Math.round(dropPercent)}% drop). Cache preserved.`,
-        };
-      }
+    if (freshCount === 0) {
+      return { saved: false, reason: 'Empty data — not saved', date };
     }
 
-    // Safe to save — fresh data is equal, larger, or within 30% of existing
     const payload = {
-      updated: new Date().toISOString(),
-      cachedAt: new Date().toISOString(),
-      previousCount: existingCount || undefined,
+      pulledAt: new Date().toISOString(),
+      candidateCount: freshCount,
       ...data,
     };
-    await redis.set(key, JSON.stringify(payload));
-    return { saved: true, reason: `Cached ${freshCount} candidates (was ${existingCount})` };
+
+    // Save the dated snapshot
+    await redis.set(`${base}:${date}`, JSON.stringify(payload));
+
+    // Update the latest pointer
+    await redis.set(`${base}:latest`, date);
+
+    // Append to history list
+    const history = await redis.get(`${base}:history`);
+    const dates = history ? (typeof history === 'string' ? JSON.parse(history) : history) : [];
+    if (!dates.includes(date)) {
+      dates.push(date);
+      await redis.set(`${base}:history`, JSON.stringify(dates));
+    }
+
+    return { saved: true, reason: `Saved snapshot ${date} with ${freshCount} candidates`, date };
   } catch {
-    return { saved: false, reason: 'Redis write failed' };
+    return { saved: false, reason: 'Redis write failed', date: today() };
   }
 }
 
 /**
- * Wrapper: try to fetch fresh data, fall back to cache if fetch fails.
- * Fresh data only replaces cache if it passes safety checks.
+ * Get a specific dated snapshot
+ */
+export async function getSnapshot(source, state, date) {
+  try {
+    const key = `${baseKey(source, state)}:${date}`;
+    const data = await redis.get(key);
+    if (data && typeof data === 'object') return data;
+    if (data && typeof data === 'string') return JSON.parse(data);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get list of all snapshot dates for a source+state
+ */
+export async function getHistory(source, state) {
+  try {
+    const key = `${baseKey(source, state)}:history`;
+    const history = await redis.get(key);
+    if (!history) return [];
+    return typeof history === 'string' ? JSON.parse(history) : history;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Wrapper: fetch fresh data, save as new snapshot, fall back to latest snapshot on failure.
  */
 export async function fetchWithCache(source, state, fetchFn) {
   try {
@@ -85,19 +121,18 @@ export async function fetchWithCache(source, state, fetchFn) {
     const freshCount = freshData && Array.isArray(freshData.data) ? freshData.data.length : 0;
 
     if (freshCount > 0) {
-      // Attempt to cache — setCache will reject if data looks like a regression
       const cacheResult = await setCache(source, state, freshData);
       return { ...freshData, fromCache: false, cacheStatus: cacheResult.reason };
     }
 
-    // Fresh fetch returned empty — serve cache instead
+    // Fresh fetch returned empty — serve latest snapshot
     const cached = await getCached(source, state);
-    if (cached) return { ...cached, fromCache: true, note: 'Source returned empty. Showing cached data.' };
+    if (cached) return { ...cached, fromCache: true, note: 'Source returned empty. Showing latest cached snapshot.' };
     return freshData;
   } catch (err) {
-    // Fetch failed entirely — serve cache
+    // Fetch failed — serve latest snapshot
     const cached = await getCached(source, state);
-    if (cached) return { ...cached, fromCache: true, note: `Source unavailable (${err.message}). Showing cached data.` };
+    if (cached) return { ...cached, fromCache: true, note: `Source unavailable (${err.message}). Showing latest cached snapshot.` };
     throw err;
   }
 }
